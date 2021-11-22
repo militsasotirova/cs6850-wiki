@@ -14,7 +14,12 @@ class WikiObj:
     def __str__(self):
         return "Page ID: " + str(self.page_id) + ", First Link: " + str(
             self.first_link) + ", Number of Words: " + str(self.num_words) + \
-               ", Number of Sections"
+               ", Number of Sections: " + str(self.num_sections) + ", Number " \
+                                                                   "of " \
+                                                                   "External " \
+                                                                   "Links: " \
+               + str(self.num_ext_links) + ", Number of Internal Links: " + \
+               str(self.num_int_links)
 
 
 def parse_obj(data):
