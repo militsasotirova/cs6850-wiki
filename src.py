@@ -1,4 +1,10 @@
-import json
+import jsonlines
+import matplotlib.pyplot as plt
+import graphviz
+import random
+import spacy
+
+PHILOSOPHY_PAGE_ID = 12
 
 
 class WikiObj:
@@ -40,20 +46,165 @@ def parse_obj(data):
 
     int_links = set()
     for section in data["sections"]:
-        int_links.union(set(section["target_page_ids"]))
+        int_links = int_links.union(set(section["target_page_ids"]))
     num_int_links = len(int_links)
 
     return WikiObj(page_id, first_link, num_words, num_sections,
                    num_ext_links, num_int_links)
 
 
-def create_tree():
-    f = open('test.jsonl', 'r')
-    data = json.load(f)
+def find_first_link_dist(curr_dist, curr_page_id, visited, tree_to_bfs,
+                         memoized_data):
+    if curr_page_id == PHILOSOPHY_PAGE_ID:
+        return curr_dist
 
-    for i in data.keys():
-        print(i)
+    if curr_page_id in visited:
+        return None  # means we found a loop before we reached Philosophy;
+        # i.e. there is no first link path
+
+    if curr_page_id in memoized_data.keys():
+        return curr_dist + memoized_data[curr_page_id]
+
+    visited.append(curr_page_id)
+
+    return find_first_link_dist(curr_dist + 1, tree_to_bfs[curr_page_id][1],
+                                visited, tree_to_bfs, memoized_data)
+
+
+def populate_first_link_dist_map(tree_to_bfs):
+    first_link_dist_map = {}
+    f = open("first_link_dist.txt", "w")
+    count = 1
+    total_num_pages = len(tree_to_bfs.keys())
+
+    for page_id in tree_to_bfs.keys():
+        print("Processing page " + str(count) + " out of " + str(total_num_pages))
+        dist = find_first_link_dist(0, page_id, [], tree_to_bfs,
+                                    first_link_dist_map)
+        first_link_dist_map[page_id] = dist
+        f.write(str(page_id) + " " + str(dist) + "\n")
+
+    f.close()
+    return first_link_dist_map
+
+
+def create_tree():
+    # keys are page IDs, values are tuples of (wiki_obj, first link ID)
+    result_tree = {}
+
+    with jsonlines.open('input.jsonl') as reader:
+        for obj in reader:
+            wiki_obj = parse_obj(obj)
+            result_tree[wiki_obj.page_id] = (wiki_obj, wiki_obj.first_link)
+
+    return result_tree
+
+
+def display_figures(first_link_dist_map, phil_tree):
+    first_link_dists = []
+    num_words = []
+    num_sections = []
+    num_ext_links = []
+    num_int_links = []
+
+    for page_id in first_link_dist_map.keys():
+        wiki_obj = phil_tree[page_id][0]
+
+        first_link_dists.append(first_link_dist_map[page_id])
+
+        num_words.append(wiki_obj.num_words)
+        num_sections.append(wiki_obj.num_sections)
+        num_ext_links.append(wiki_obj.num_ext_links)
+        num_int_links.append(wiki_obj.num_int_links)
+
+    plt.scatter(first_link_dists, num_words)
+    plt.show()
+
+    plt.scatter(first_link_dists, num_sections)
+    plt.show()
+
+    plt.scatter(first_link_dists, num_ext_links)
+    plt.show()
+
+    plt.scatter(first_link_dists, num_int_links)
+    plt.show()
+
+
+def graph_viz(phil_tree):
+    dot = graphviz.Digraph(comment='First Link Connections Between Wikipedia '
+                                   'Articles')
+
+    for page_id in phil_tree.keys():
+        wiki_obj = phil_tree[page_id][0]
+        dot.edge(str(page_id), str(wiki_obj.first_link))
+
+    f = open("wiki_dot_source.txt", "w")
+    f.write(dot.source)
     f.close()
 
-tree = {}
-create_tree()
+    dot.render('wiki.gv', view=True)
+
+
+def find_closest_ancestor(page1, page2, phil_tree, first_link_dist_map):
+    if first_link_dist_map[page1] is None or first_link_dist_map[page2] is None:
+        # ensures that both pages are in the same (biggest) connected component
+        return None
+
+    visited1 = []
+    visited2 = []
+
+    curr_page1 = page1
+    curr_page2 = page2
+
+    while not curr_page1 == PHILOSOPHY_PAGE_ID and not curr_page2 == \
+            PHILOSOPHY_PAGE_ID:
+        visited1.append(curr_page1)
+        visited2.append(curr_page2)
+
+        if curr_page1 in visited2:
+            return curr_page1
+
+        if curr_page2 in visited1:
+            return curr_page2
+
+        wiki_obj1 = phil_tree[curr_page1][0]
+        wiki_obj2 = phil_tree[curr_page2][0]
+
+        curr_page1 = wiki_obj1.first_link
+        curr_page2 = wiki_obj2.first_link
+
+    print("something's wrong!")
+
+
+def sample_article(phil_tree):
+    num_keys = len(phil_tree.keys())
+    rand_index = int(random.random() * num_keys)
+    rand_page = list(phil_tree.keys())[rand_index]
+    return rand_page
+
+
+def get_title():
+    pass
+
+
+def find_one_pair_similarity(phil_tree, first_link_dist_map):
+    page1 = sample_article(phil_tree)
+    page2 = sample_article(phil_tree)
+    while page2 == page1:
+        page2 = sample_article(phil_tree)
+
+    ancestor = find_closest_ancestor(page1, page2, phil_tree,
+                                    first_link_dist_map)
+
+    if ancestor is None:
+        return None
+
+    nlp = spacy.load('en_core_web_lg')
+
+    get_title()
+
+
+tree = create_tree()
+dist_map = populate_first_link_dist_map(tree)
+display_figures(dist_map, tree)
+graph_viz(tree)
