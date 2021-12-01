@@ -4,6 +4,8 @@ import graphviz
 import random
 import spacy
 import csv
+import numpy as np
+from scipy.stats import gaussian_kde
 
 PHILOSOPHY_PAGE_ID = 13692155
 nlp = spacy.load('en_core_web_lg')
@@ -143,40 +145,41 @@ def display_figures(first_link_dist_map, phil_tree):
     for page_id in first_link_dist_map.keys():
         wiki_obj = phil_tree[page_id][0]
 
-        first_link_dists.append(first_link_dist_map[page_id])
+        if not first_link_dist_map[page_id] is None:
+            first_link_dists.append(first_link_dist_map[page_id])
 
-        num_words.append(wiki_obj.num_words)
-        num_sections.append(wiki_obj.num_sections)
-        num_ext_links.append(wiki_obj.num_ext_links)
-        num_int_links.append(wiki_obj.num_int_links)
+            num_words.append(wiki_obj.num_words)
+            num_sections.append(wiki_obj.num_sections)
+            num_ext_links.append(wiki_obj.num_ext_links)
+            num_int_links.append(wiki_obj.num_int_links)
 
-    # plt.figure(0)
-    # plt.scatter(first_link_dists, num_words)
-    # plt.title("First Link Distances vs Number of Words")
-    # plt.xlabel("First Link Distance From Philosophy")
-    # plt.ylabel("Number of Words in Article")
-    # plt.show()
-    #
-    # plt.figure(1)
-    # plt.scatter(first_link_dists, num_sections)
-    # plt.title("First Link Distances vs Number of Sections")
-    # plt.xlabel("First Link Distance From Philosophy")
-    # plt.ylabel("Number of Sections in Article")
-    # plt.show()
-    #
-    # plt.figure(2)
-    # plt.scatter(first_link_dists, num_ext_links)
-    # plt.title("First Link Distances vs Number of External Links")
-    # plt.xlabel("First Link Distance From Philosophy")
-    # plt.ylabel("Number of External Links in Article")
-    # plt.show()
-    #
-    # plt.figure(3)
-    # plt.scatter(first_link_dists, num_int_links)
-    # plt.title("First Link Distances vs Number of Internal Links")
-    # plt.xlabel("First Link Distance From Philosophy")
-    # plt.ylabel("Number of Internal Links in Article")
-    # plt.show()
+    plt.figure(0)
+    plt.scatter(first_link_dists, num_words, alpha=0.05)
+    plt.title("First Link Distances vs Number of Words")
+    plt.xlabel("First Link Distance From Philosophy")
+    plt.ylabel("Number of Words in Article")
+    plt.show()
+
+    plt.figure(1)
+    plt.scatter(first_link_dists, num_sections, alpha=0.05)
+    plt.title("First Link Distances vs Number of Sections")
+    plt.xlabel("First Link Distance From Philosophy")
+    plt.ylabel("Number of Sections in Article")
+    plt.show()
+
+    plt.figure(2)
+    plt.scatter(first_link_dists, num_ext_links, alpha=0.05)
+    plt.title("First Link Distances vs Number of External Links")
+    plt.xlabel("First Link Distance From Philosophy")
+    plt.ylabel("Number of External Links in Article")
+    plt.show()
+
+    plt.figure(3)
+    plt.scatter(first_link_dists, num_int_links, alpha=0.05)
+    plt.title("First Link Distances vs Number of Internal Links")
+    plt.xlabel("First Link Distance From Philosophy")
+    plt.ylabel("Number of Internal Links in Article")
+    plt.show()
 
 
 def graph_viz(phil_tree):
@@ -302,8 +305,8 @@ def find_many_pair_similarity_graph(phil_tree, first_link_dist_map,
 
 
 tree = create_tree()
-#dist_map = populate_first_link_dist_map(tree)
-#display_figures(dist_map, tree)
-graph_viz(tree)
-#ids_to_tile = get_titles()
+dist_map = populate_first_link_dist_map(tree)
+display_figures(dist_map, tree)
+# graph_viz(tree)
+# #ids_to_tile = get_titles()
 #find_many_pair_similarity_graph(tree, dist_map, ids_to_tile)
