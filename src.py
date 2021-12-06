@@ -31,6 +31,16 @@ class WikiObj:
                + str(self.num_ext_links) + ", Number of Internal Links: " + \
                str(self.num_int_links)
 
+    def to_json(self):
+        return {
+            "page_id": self.page_id,
+            "first_link": self.first_link,
+            "num_words": self.num_words,
+            "num_sections": self.num_sections,
+            "num_ext_links": self.num_ext_links,
+            "num_int_links": self.num_int_links
+        }
+
 
 def find_first_link_target(text, link_offsets, target_page_ids):
     in_parens = False
@@ -104,7 +114,6 @@ def find_first_link_dist(curr_dist, curr_page_id, visited, tree_to_bfs,
 
 def populate_first_link_dist_map(tree_to_bfs):
     first_link_dist_map = {}
-    f = open("first_link_dist.txt", "w")
     count = 1
     total_num_pages = len(tree_to_bfs.keys())
 
@@ -114,10 +123,8 @@ def populate_first_link_dist_map(tree_to_bfs):
         dist = find_first_link_dist(0, page_id, [], tree_to_bfs,
                                     first_link_dist_map)
         first_link_dist_map[page_id] = dist
-        f.write(str(page_id) + " " + str(dist) + "\n")
         count += 1
 
-    f.close()
     return first_link_dist_map
 
 
@@ -155,28 +162,28 @@ def display_figures(first_link_dist_map, phil_tree):
 
     plt.figure(0)
     plt.scatter(first_link_dists, num_words, s=5, alpha=0.05)
-    plt.title("First Link Distances vs Number of Words")
+    plt.title("Number of Words vs First Link Distances")
     plt.xlabel("First Link Distance From Philosophy")
     plt.ylabel("Number of Words in Article")
     plt.show()
 
     plt.figure(1)
     plt.scatter(first_link_dists, num_sections, s=10, alpha=0.05)
-    plt.title("First Link Distances vs Number of Sections")
+    plt.title("Number of Sections vs First Link Distances")
     plt.xlabel("First Link Distance From Philosophy")
     plt.ylabel("Number of Sections in Article")
     plt.show()
 
     plt.figure(2)
     plt.scatter(first_link_dists, num_ext_links, s=2, alpha=0.05)
-    plt.title("First Link Distances vs Number of External Links")
+    plt.title("Number of External Links vsFirst Link Distances")
     plt.xlabel("First Link Distance From Philosophy")
     plt.ylabel("Number of External Links in Article")
     plt.show()
 
     plt.figure(3)
     plt.scatter(first_link_dists, num_int_links, s=2, alpha=0.05)
-    plt.title("First Link Distances vs Number of Internal Links")
+    plt.title("Number of Internal Links vs First Link Distances")
     plt.xlabel("First Link Distance From Philosophy")
     plt.ylabel("Number of Internal Links in Article")
     plt.show()
@@ -304,9 +311,52 @@ def find_many_pair_similarity_graph(phil_tree, first_link_dist_map,
     plt.show()
 
 
-tree = create_tree()
-dist_map = populate_first_link_dist_map(tree)
+def cache(tree_to_save, dist_map_to_save):
+    with jsonlines.open('cached_tree.jsonl', 'w') as writer:
+        writer.write_all([tree_to_save[key][0].to_json() for key in tree_to_save])
+
+    with open('cached_dist_map.txt', 'w') as f:
+        for key in dist_map_to_save:
+            f.write(str(key) + " " + str(dist_map_to_save[key]) + "\n")
+
+
+def parse_obj_from_cache(data):
+    page_id = data["page_id"]
+    first_link = data["first_link"]
+    num_words = data["num_words"]
+    num_sections = data["num_sections"]
+    num_ext_links = data["num_ext_links"]
+    num_int_links = data["num_int_links"]
+
+    return WikiObj(page_id, first_link, num_words, num_sections,
+                   num_ext_links, num_int_links)
+
+
+def read_cache():
+    result_tree = {}
+    with jsonlines.open('cached_tree.jsonl', 'r') as reader:
+        for obj in reader:
+            wiki_obj = parse_obj_from_cache(obj)
+            result_tree[wiki_obj.page_id] = (wiki_obj, wiki_obj.first_link)
+
+    first_link_dist_map = {}
+    with open('cached_dist_map.txt', 'r') as f:
+        lines = f.readlines()
+        for line in lines:
+            entry_list = line.split(" ")
+            if entry_list[1] == "None\n":
+                first_link_dist_map[int(entry_list[0])] = None
+            else:
+                first_link_dist_map[int(entry_list[0])] = int(entry_list[1])
+
+    return result_tree, first_link_dist_map
+
+
+# tree = create_tree()
+# dist_map = populate_first_link_dist_map(tree)
+# cache(tree, dist_map)
+tree, dist_map = read_cache()
 display_figures(dist_map, tree)
 # graph_viz(tree)
-# #ids_to_tile = get_titles()
-#find_many_pair_similarity_graph(tree, dist_map, ids_to_tile)
+# ids_to_tile = get_titles()
+# find_many_pair_similarity_graph(tree, dist_map, ids_to_tile)
