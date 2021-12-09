@@ -4,11 +4,13 @@ import graphviz
 import random
 import spacy
 import csv
-import numpy as np
-from scipy.stats import gaussian_kde
+from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
+from nltk.corpus import words
 
 PHILOSOPHY_PAGE_ID = 13692155
-nlp = spacy.load('en_core_web_lg')
+# nlp = spacy.load('en_core_web_lg')
+model = SentenceTransformer('sentence-transformers/bert-base-nli-mean-tokens')
 
 
 class WikiObj:
@@ -256,20 +258,28 @@ def get_titles():
     return result
 
 
+def is_in_corpus(title):
+    for word in title.split(" "):
+        if word not in words.words():
+            return False
+    return True
+
+
 def find_one_pair_similarity(phil_tree, first_link_dist_map, ids_to_titles):
     page1 = sample_article(phil_tree)
-    while page1 not in ids_to_titles.keys() or ' ' in ids_to_titles[page1]:
+    while page1 not in ids_to_titles.keys() or ' ' in ids_to_titles[page1] or \
+            not is_in_corpus(ids_to_titles[page1]):
         page1 = sample_article(phil_tree)
 
     page2 = sample_article(phil_tree)
     while page2 == page1 or \
             page2 not in ids_to_titles.keys() or \
-            ' ' in ids_to_titles[page2]:
+            ' ' in ids_to_titles[page2] or \
+            not is_in_corpus(ids_to_titles[page2]):
         page2 = sample_article(phil_tree)
 
     ancestor = find_closest_ancestor(page1, page2, phil_tree,
                                      first_link_dist_map)
-    print("ancestor:", ancestor)
 
     if ancestor is None:
         return None
@@ -281,30 +291,157 @@ def find_one_pair_similarity(phil_tree, first_link_dist_map, ids_to_titles):
     avg_dist_to_ancestor = ((page1_to_phil - ancestor_to_phil) + (
         page2_to_phil - ancestor_to_phil)) / 2
 
-    title1 = nlp(ids_to_titles[page1])
-    title2 = nlp(ids_to_titles[page2])
-    similarity = title1.similarity(title2)
-    if similarity < 0:
-        print('SIMILARITY NEGATIVE. WORDS ARE ', title1, title2)
+    # title1 = nlp(ids_to_titles[page1])
+    # title2 = nlp(ids_to_titles[page2])
+    # similarity = title1.similarity(title2)
+    # if similarity < 0:
+    #     print('SIMILARITY NEGATIVE. WORDS ARE ', title1, title2)
 
-    return avg_dist_to_ancestor, similarity
+    titles = ["This article is about " + ids_to_titles[page1] + ".",
+              "This article is about " + ids_to_titles[page2] + "."]
+    embeddings = model.encode(titles)
+    similarity = cosine_similarity([embeddings[0]], embeddings[1:])[0][0]
+
+    return page1, page2, avg_dist_to_ancestor, similarity
 
 
 def find_many_pair_similarity_graph(phil_tree, first_link_dist_map,
                                     ids_to_titles):
     avg_distances = []
     similarities = []
-    for i in range(1000):
+    f = open('similarity_cache.txt', 'w')
+    for i in range(100):
         print("on trial:", i)
         result = find_one_pair_similarity(phil_tree, first_link_dist_map,
                                           ids_to_titles)
         if result is not None:
-            dist, sim = result
+            page1, page2, dist, sim = result
             avg_distances.append(dist)
             similarities.append(sim)
+            f.write(str(page1) + " " + ids_to_titles[page1] + " " +
+                    str(page2) + " " + ids_to_titles[page2] + " " +
+                    str(dist) + " " + str(sim) + "\n")
+
+    f.close()
 
     plt.figure(4)
-    plt.scatter(avg_distances, similarities)
+    plt.scatter(avg_distances, similarities, s=10, alpha=0.05)
+    plt.title("Average Distance to Common Ancestor vs Title Similarity")
+    plt.xlabel("Average Distance to Common Ancestor")
+    plt.ylabel("Title Similarity")
+    plt.show()
+
+
+def chosen_sim(file_name, phil_tree, first_link_dist_map):
+    page_id_list = []
+    title_list = []
+    with open(file_name, 'r') as f:
+        lines = f.readlines()
+        for line in lines:
+            first_space = line.index(" ")
+            page_id = int(line[:first_space])
+            title = line[first_space + 1:]
+            page_id_list.append(page_id)
+            title_list.append(title)
+
+    avg_distances = []
+    similarities = []
+    for i, page_id_1 in enumerate(page_id_list):
+        for j, page_id_2 in enumerate(page_id_list):
+            if not i == j:
+                ancestor = find_closest_ancestor(
+                    page_id_1, page_id_2, phil_tree, first_link_dist_map)
+
+                if ancestor is not None:
+                    # calculate distances to ancestor
+                    page1_to_phil = first_link_dist_map[page_id_1]
+                    page2_to_phil = first_link_dist_map[page_id_2]
+                    ancestor_to_phil = first_link_dist_map[ancestor]
+                    avg_dist_to_ancestor = ((page1_to_phil - ancestor_to_phil) + (
+                            page2_to_phil - ancestor_to_phil)) / 2
+                    avg_distances.append(avg_dist_to_ancestor)
+
+                    # titles = [
+                    #     "This article is about " + title_list[i] + ".",
+                    #     "This article is about " + title_list[j] + "."]
+                    titles = [title_list[i], title_list[j]]
+                    embeddings = model.encode(titles)
+                    similarity = cosine_similarity([embeddings[0]],
+                                                   embeddings[1:])[0][0]
+                    similarities.append(similarity)
+
+    plt.figure(4)
+    plt.scatter(avg_distances, similarities, s=10, alpha=0.25)
+    plt.title("Average Distance to Common Ancestor vs Title Similarity")
+    plt.xlabel("Average Distance to Common Ancestor")
+    plt.ylabel("Title Similarity")
+    plt.show()
+
+
+def read_sim_cache_graph():
+    avg_distances = []
+    similarities = []
+
+    with open('similarity_cache.txt', 'r') as f:
+        lines = f.readlines()
+        for line in lines:
+            entry_list = line.split(" ")
+            avg_distances.append(int(entry_list[4]))
+            similarities.append(int(entry_list[5]))
+
+    plt.figure(4)
+    plt.scatter(avg_distances, similarities, s=10, alpha=0.05)
+    plt.title("Average Distance to Common Ancestor vs Title Similarity")
+    plt.xlabel("Average Distance to Common Ancestor")
+    plt.ylabel("Title Similarity")
+    plt.show()
+
+
+def hard_coded_sims(phil_tree, first_link_dist_map):
+    sims = [
+        [-1, 2, 9, 6, 8, 2, 5, 1, 1, 5, 3, 5],
+        [-1, -1, 4, 3, 2, 7, 8, 7, 5, 3, 3, 2],
+        [-1, -1, -1, 9, 7, 2, 4, 1, 1, 7, 8, 2],
+        [-1, -1, -1, -1, 9, 2, 5, 1, 1, 7, 9, 7],
+        [-1, -1, -1, -1, -1, 3, 5, 1, 1, 3, 3, 9],
+        [-1, -1, -1, -1, -1, -1, 9, 8, 5, 7, 4, 2],
+        [-1, -1, -1, -1, -1, -1, -1, 7, 3, 2, 2, 1],
+        [-1, -1, -1, -1, -1, -1, -1, -1, 6, 2, 1, 1],
+        [-1, -1, -1, -1, -1, -1, -1, -1, -1, 1, 2, 1],
+        [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 9, 1],
+        [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 1],
+        [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1]]
+
+    page_id_list = []
+    with open('short_titles.txt', 'r') as f:
+        lines = f.readlines()
+        for line in lines:
+            first_space = line.index(" ")
+            page_id = int(line[:first_space])
+            page_id_list.append(page_id)
+
+    avg_distances = []
+    similarities = []
+    for i, page_id_1 in enumerate(page_id_list):
+        for j, page_id_2 in enumerate(page_id_list):
+            if not i == j:
+                ancestor = find_closest_ancestor(
+                    page_id_1, page_id_2, phil_tree, first_link_dist_map)
+
+                if ancestor is not None:
+                    # calculate distances to ancestor
+                    page1_to_phil = first_link_dist_map[page_id_1]
+                    page2_to_phil = first_link_dist_map[page_id_2]
+                    ancestor_to_phil = first_link_dist_map[ancestor]
+                    avg_dist_to_ancestor = ((
+                                                        page1_to_phil - ancestor_to_phil) + (
+                                                    page2_to_phil - ancestor_to_phil)) / 2
+                    avg_distances.append(avg_dist_to_ancestor)
+
+                    similarities.append(sims[i][j])
+
+    plt.figure(5)
+    plt.scatter(avg_distances, similarities, s=10, alpha=0.25)
     plt.title("Average Distance to Common Ancestor vs Title Similarity")
     plt.xlabel("Average Distance to Common Ancestor")
     plt.ylabel("Title Similarity")
@@ -356,7 +493,10 @@ def read_cache():
 # dist_map = populate_first_link_dist_map(tree)
 # cache(tree, dist_map)
 tree, dist_map = read_cache()
-display_figures(dist_map, tree)
+# display_figures(dist_map, tree)
 # graph_viz(tree)
 # ids_to_tile = get_titles()
 # find_many_pair_similarity_graph(tree, dist_map, ids_to_tile)
+# chosen_sim('compare_titles.txt', tree, dist_map)
+# chosen_sim('short_titles.txt', tree, dist_map)
+hard_coded_sims(tree, dist_map)
